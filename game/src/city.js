@@ -99,21 +99,22 @@ export function buildCity(scene, rng) {
     }
   }
 
-  // --- streetlights: a pole and a warm glowing head on every other corner
+  // --- streetlights: a slim pole and a warm glowing head on every other
+  // corner, set back on the sidewalk so the camera never brushes past one
   const poleMat = new THREE.MeshLambertMaterial({ color: 0x22242a });
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
   const lampGeo = new THREE.BoxGeometry(0.5, 0.3, 1.6);
-  const poleGeo = new THREE.CylinderGeometry(0.12, 0.16, 7, 6);
+  const poleGeo = new THREE.CylinderGeometry(0.09, 0.12, 6.5, 6);
   for (let k = -CITY.blocks / 2; k <= CITY.blocks / 2; k += 1) {
     for (let m = -CITY.blocks / 2; m <= CITY.blocks / 2; m += 1) {
       if ((k + m) % 2 !== 0) continue;
-      const x = k * CITY.pitch + CITY.street / 2 + 1.5;
-      const z = m * CITY.pitch + CITY.street / 2 + 1.5;
+      const x = k * CITY.pitch + CITY.street / 2 + 3.5;
+      const z = m * CITY.pitch + CITY.street / 2 + 3.5;
       if (Math.abs(x) > CITY.blocks * CITY.pitch / 2 + 6 || Math.abs(z) > CITY.blocks * CITY.pitch / 2 + 6) continue;
       const pole = new THREE.Mesh(poleGeo, poleMat);
-      pole.position.set(x, 3.5, z);
+      pole.position.set(x, 3.25, z);
       const lamp = new THREE.Mesh(lampGeo, lampMat);
-      lamp.position.set(x, 7, z);
+      lamp.position.set(x, 6.5, z);
       group.add(pole, lamp);
     }
   }
