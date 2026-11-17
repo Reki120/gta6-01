@@ -15,6 +15,10 @@
   #hud-stars { position: absolute; top: 14px; right: 200px; font-size: 22px; letter-spacing: 2px; }
   #hud-objective { position: absolute; top: 46px; left: 16px; font-size: 14px; color: #cfd6e4; max-width: 420px; }
   #hud-bottom { position: absolute; bottom: 16px; left: 16px; font-size: 16px; }
+  #hud-ammo { position: absolute; bottom: 16px; right: 16px; font-size: 16px; text-align: right; }
+  #hud-crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; font-size: 22px; line-height: 22px; text-align: center; color: rgba(255,255,255,0.9); }
+  #hud-toast { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); max-width: 560px; font-size: 15px; line-height: 1.45; text-align: center; color: #ffe9f4; background: rgba(20,8,20,0.72); border: 1px solid rgba(255,46,136,0.5); border-radius: 8px; padding: 10px 16px; }
+  #hud-hit { position: absolute; left: 50%; top: 42%; transform: translateX(-50%); font-size: 20px; font-weight: 800; color: #ffd23e; letter-spacing: 2px; }
   #hud-speed { font-size: 26px; font-weight: 700; }
   #hud-health { font-size: 15px; }
   #minimap { position: absolute; top: 14px; right: 14px; width: 170px; height: 170px; border: 2px solid rgba(255,255,255,0.35); border-radius: 8px; background: rgba(10,14,22,0.85); }
@@ -41,11 +45,15 @@
     <div id="hud-speed">0 km/h</div>
     <div>Health <span id="hud-health">100</span></div>
   </div>
+  <div id="hud-ammo">Ammo <span id="hud-ammo-count">12 / 12</span><br><span style="font-size:13px;color:#cfd6e4">Click shoot · R reload</span></div>
+  <div id="hud-crosshair" class="hidden">+</div>
+  <div id="hud-hit" class="hidden">HIT</div>
+  <div id="hud-toast" class="hidden"></div>
 </div>
 <div id="screen-title" class="overlay">
   <h1>NEON <span class="bay">BAY</span></h1>
   <p>You are Rook, a getaway driver in debt to the fixer Mara Voss. The city is yours — on foot or behind the wheel.</p>
-  <p class="keys">WASD move &amp; drive · Shift run · Space jump · Mouse drag to look · E enter / exit car · Esc pause</p>
+  <p class="keys">WASD move &amp; drive · Shift run · Space jump · Mouse drag to look · Click to shoot · R reload · E enter / exit car · Esc pause</p>
   <p id="title-best">Best cash: $250</p>
   <p class="cta">Press Enter or click to start</p>
 </div>
@@ -58,6 +66,12 @@
   <h2>Game Over</h2>
   <p id="over-stats">Cash $250 · Best $250</p>
   <p class="cta">Press Enter or click to play again</p>
+</div>
+<div id="screen-busted" class="overlay hidden">
+  <h2>BUSTED</h2>
+  <p id="busted-stats">The cops took $0 of your cash.</p>
+  <p>Mara Voss is not happy — but the job is still waiting.</p>
+  <p class="cta">Press Enter or click to keep playing</p>
 </div>
 <script src="./vendor/three.min.js"></script>
 <script type="module" src="./src/main.js"></script>
