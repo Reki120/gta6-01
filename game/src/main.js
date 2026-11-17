@@ -8,6 +8,7 @@ import { createWorld, loadSave, resetWorld, saveGame, stepWorld, EVENT_OVER, EVE
 import { createView } from './render.js';
 import { createInput, ACTION_CONFIRM, ACTION_PAUSE, ACTION_ENTER, ACTION_SHOOT, ACTION_RELOAD } from './input.js';
 import { createHud } from './hud.js';
+import { createAudio } from './audio.js';
 import { stageShot } from './shots.js';
 
 const MAX_FRAME = 0.25;
@@ -31,6 +32,7 @@ function announce(message) {
 
 function runShot(name) {
   const scene = stageShot(name, state);
+  window.__shotState = state; // test hook: lets a probe read the staged scene
   hud.setBest(state.bestCash);
   if (scene.screen === 'title') hud.show('title');
   else hud.show(null);
@@ -52,6 +54,10 @@ function runGame() {
   let screen = 'title';
   let accumulator = 0;
   let last = performance.now();
+  const audio = createAudio();
+  window.__audio = audio; // test hook, like window.__game
+  let prevAmmo = state.combat.ammo;
+  let prevBanner = '';
 
   // A harmless hook for automated smoke tests: position, speed, car, health.
   window.__game = {
@@ -107,6 +113,7 @@ function runGame() {
     screen = 'play';
     hud.show(null);
     input.takeActions(); // swallow the click that started the game (no stray shot)
+    audio.click();
     announce('Playing. Drive to the harbour and meet Mara Voss.');
   }
 
@@ -114,6 +121,7 @@ function runGame() {
     screen = 'play';
     hud.show(null);
     input.takeActions();
+    audio.click();
     announce('Back on the street. Mara Voss is waiting.');
   }
 
@@ -158,12 +166,34 @@ function runGame() {
     else if (actions & ACTION_PAUSE && screen === 'play') {
       screen = 'paused';
       hud.show('pause');
+      audio.click();
       announce('Paused.');
     } else if (actions & (ACTION_PAUSE | ACTION_CONFIRM) && screen === 'paused') {
       screen = 'play';
       hud.show(null);
+      audio.click();
       announce('Playing.');
     }
+  }
+
+  /** One-frame sound bookkeeping: engine + siren + music, shot and banner chimes. */
+  function updateAudio() {
+    const car = state.activeCar >= 0 ? state.cars[state.activeCar] : null;
+    audio.update(0, {
+      speedKmh: car ? Math.abs(car.speed) * 3.6 : Math.abs(state.player.speed) * 3.6,
+      wanted: state.wanted,
+      driving: state.activeCar >= 0,
+    });
+    if (screen !== 'play') return;
+    if (state.combat.ammo < prevAmmo) audio.shot();
+    prevAmmo = state.combat.ammo;
+    const banner = state.mission && state.mission.banner ? state.mission.banner.text : '';
+    if (banner && banner !== prevBanner) {
+      if (banner.includes('complete!')) audio.chime('complete');
+      else if (banner.includes('failed') || banner.startsWith('BUSTED')) audio.chime('fail');
+      else audio.chime('mission');
+    }
+    prevBanner = banner;
   }
 
   function frame(now) {
@@ -197,8 +227,20 @@ function runGame() {
       }
     }
     hud.update(state);
+    updateAudio();
     view.draw(state, frameDt || STEP);
   }
+
+  // Audio unlocks on the first gesture; M toggles mute, as does the HUD button.
+  window.addEventListener('pointerdown', () => audio.unlock());
+  window.addEventListener('keydown', (event) => {
+    audio.unlock();
+    if (event.code === 'KeyM' && !event.repeat) {
+      hud.setMuted(audio.toggleMuted());
+    }
+  });
+  hud.onMuteClick(() => hud.setMuted(audio.toggleMuted()));
+  hud.setMuted(audio.muted);
 
   canvas.addEventListener('pointerdown', () => {
     if (screen === 'title' || screen === 'over') startGame();
