@@ -30,6 +30,7 @@ export function createHud() {
     over: el('screen-over'),
     busted: el('screen-busted'),
   };
+  const muteBtn = el('hud-mute');
   const bestLine = el('title-best');
   const overLine = el('over-stats');
   const bustedLine = el('busted-stats');
@@ -97,8 +98,9 @@ export function createHud() {
       ctx.arc(toPx(unit.x), toPx(unit.z), 4, 0, Math.PI * 2);
       ctx.fill();
     }
-    // Rook: a white arrow pointing where he faces
-    const p = state.player;
+    // Rook: a white arrow pointing where he faces — the car when driving,
+    // since Rook's own position freezes at the door while he drives
+    const p = state.activeCar >= 0 ? state.cars[state.activeCar] : state.player;
     const px = toPx(p.x);
     const pz = toPx(p.z);
     ctx.save();
@@ -116,6 +118,13 @@ export function createHud() {
 
   return {
     show,
+    setMuted(muted) {
+      muteBtn.textContent = muted ? '🔇' : '🔊';
+      muteBtn.setAttribute('aria-label', muted ? 'Unmute sound (M)' : 'Mute sound (M)');
+    },
+    onMuteClick(handler) {
+      muteBtn.addEventListener('click', handler);
+    },
     setBest(best) {
       bestLine.textContent = `Best cash: $${best.toLocaleString('en-US')}`;
     },
