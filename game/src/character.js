@@ -1,63 +1,55 @@
-// The player character "Rook": a low-poly figure built from boxes — jacket, head,
-// arms and legs — with a simple walk swing driven by speed. No external model.
+// Rook, the getaway driver: a low-poly figure built from boxes — jacket, jeans,
+// boots and a cap — with swinging limbs while walking and a lean while running.
 export function buildCharacter() {
   const group = new THREE.Group();
-  const jacket = new THREE.MeshStandardMaterial({ color: 0x1f8a70, roughness: 0.8 });
-  const denim = new THREE.MeshStandardMaterial({ color: 0x2e3a55, roughness: 0.9 });
-  const skin = new THREE.MeshStandardMaterial({ color: 0xd9a986, roughness: 0.7 });
-  const hair = new THREE.MeshStandardMaterial({ color: 0x1a1210, roughness: 0.9 });
-  const shoe = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.6 });
+  group.name = 'rook';
+  const jacket = new THREE.MeshLambertMaterial({ color: 0x27324a });
+  const jeans = new THREE.MeshLambertMaterial({ color: 0x2c3a55 });
+  const skin = new THREE.MeshLambertMaterial({ color: 0xc98d64 });
+  const cap = new THREE.MeshLambertMaterial({ color: 0xd43a5e });
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.34), jacket);
-  torso.position.y = 1.12;
-  group.add(torso);
+  torso.position.y = 1.18;
+  torso.castShadow = true;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.34), skin);
+  head.position.y = 1.74;
+  head.castShadow = true;
+  const hat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.12, 0.4), cap);
+  hat.position.y = 1.95;
+  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.05, 0.2), cap);
+  brim.position.set(0, 1.9, 0.26);
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.36, 0.32), skin);
-  head.position.y = 1.68;
-  group.add(head);
+  const armGeo = new THREE.BoxGeometry(0.18, 0.66, 0.2);
+  const legGeo = new THREE.BoxGeometry(0.24, 0.78, 0.26);
+  const armL = new THREE.Mesh(armGeo, jacket);
+  armL.position.set(-0.42, 1.2, 0);
+  const armR = new THREE.Mesh(armGeo, jacket);
+  armR.position.set(0.42, 1.2, 0);
+  const legL = new THREE.Mesh(legGeo, jeans);
+  legL.position.set(-0.16, 0.42, 0);
+  const legR = new THREE.Mesh(legGeo, jeans);
+  legR.position.set(0.16, 0.42, 0);
+  for (const limb of [armL, armR, legL, legR]) limb.castShadow = true;
 
-  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.12, 0.36), hair);
-  cap.position.y = 1.9;
-  group.add(cap);
-
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.66, 0.2), jacket);
-  armL.position.set(-0.42, 1.14, 0);
-  group.add(armL);
-  const armR = armL.clone();
-  armR.position.x = 0.42;
-  group.add(armR);
-
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.78, 0.26), denim);
-  legL.position.set(-0.16, 0.39, 0);
-  group.add(legL);
-  const legR = legL.clone();
-  legR.position.x = 0.16;
-  group.add(legR);
-
-  const shoeL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.4), shoe);
-  shoeL.position.set(-0.16, 0.06, 0.05);
-  group.add(shoeL);
-  const shoeR = shoeL.clone();
-  shoeR.position.x = 0.16;
-  group.add(shoeR);
-
-  group.traverse((child) => {
-    if (child.isMesh) child.castShadow = true;
-  });
-
-  let phase = 0;
+  group.add(torso, head, hat, brim, armL, armR, legL, legR);
   return {
     group,
-    /** Swing the limbs with the walk cycle; `speed` is m/s, `dt` the step. */
-    animate(speed, dt) {
-      phase += speed * dt * 1.6;
-      const swing = Math.min(0.7, speed * 0.09) * Math.sin(phase);
-      legL.rotation.x = swing;
-      legR.rotation.x = -swing;
-      armL.rotation.x = -swing * 0.8;
-      armR.rotation.x = swing * 0.8;
-      // A little bob while moving.
-      group.position.y = Math.abs(Math.sin(phase)) * Math.min(0.05, speed * 0.006);
+    limbs: { armL, armR, legL, legR },
+    /** Swing the limbs with the walk cycle; `phase` advances with distance. */
+    pose(phase, speedRatio) {
+      const swing = 0.65 * speedRatio;
+      legL.rotation.x = Math.sin(phase) * swing;
+      legR.rotation.x = -Math.sin(phase) * swing;
+      armL.rotation.x = -Math.sin(phase) * swing * 0.8;
+      armR.rotation.x = Math.sin(phase) * swing * 0.8;
+      torso.rotation.x = speedRatio * 0.12;
+    },
+    idle() {
+      legL.rotation.x = 0;
+      legR.rotation.x = 0;
+      armL.rotation.x = 0;
+      armR.rotation.x = 0;
+      torso.rotation.x = 0;
     },
   };
 }
