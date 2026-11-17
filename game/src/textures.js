@@ -1,85 +1,93 @@
-// Canvas-generated textures, made at runtime: lit windows for building faces, a neon
-// sign strip, and a road surface with a centre line. No image files, no network.
-import { PALETTE } from './config.js';
+// Canvas textures painted at runtime — no image files, no network.
+// Facades get lit windows for the dusk look; the ground gets the whole street map.
+import { CITY, PALETTE } from './config.js';
 
-function makeCanvas(width, height) {
+/** A building face: dark cladding, a grid of windows, some of them warmly lit. */
+export function facadeTexture(rng, base, floors, columns, neon) {
+  const w = 128;
+  const h = 256;
   const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  return { canvas, ctx: canvas.getContext('2d') };
-}
-
-function toTexture(canvas) {
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
-}
-
-/** A facade of glowing windows on a dark wall. `lit` is the share of windows lit. */
-export function windowTexture(random, base, lit) {
-  const { canvas, ctx } = makeCanvas(128, 256);
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
   ctx.fillStyle = base;
-  ctx.fillRect(0, 0, 128, 256);
-  const cols = 6;
-  const rows = 14;
-  const w = 128 / cols;
-  const h = 256 / rows;
-  const litColours = ['#ffd98a', '#9be8ff', '#ff9ecf', '#fff3c4'];
-  for (let c = 0; c < cols; c += 1) {
-    for (let r = 0; r < rows; r += 1) {
-      if (random() < lit) {
-        ctx.fillStyle = litColours[Math.floor(random() * litColours.length)];
-        ctx.globalAlpha = 0.55 + random() * 0.45;
+  ctx.fillRect(0, 0, w, h);
+  // faint vertical seams between panels
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  for (let c = 0; c <= columns; c += 1) ctx.fillRect((c * w) / columns - 1, 0, 2, h);
+  const lit = ['#ffd27a', '#ffe9a8', '#9be8ff', '#ff9ecf'];
+  for (let f = 0; f < floors; f += 1) {
+    for (let c = 0; c < columns; c += 1) {
+      const x = 10 + (c * (w - 20)) / columns;
+      const y = 12 + (f * (h - 24)) / floors;
+      const ww = (w - 20) / columns - 8;
+      const hh = (h - 24) / floors - 8;
+      if (rng() < 0.42) {
+        ctx.fillStyle = lit[Math.floor(rng() * lit.length)];
+        ctx.fillRect(x, y, ww, hh);
       } else {
-        ctx.fillStyle = '#101018';
-        ctx.globalAlpha = 1;
+        ctx.fillStyle = 'rgba(8,12,24,0.85)';
+        ctx.fillRect(x, y, ww, hh);
       }
-      ctx.fillRect(c * w + 3, r * h + 4, w - 6, h - 8);
     }
   }
-  ctx.globalAlpha = 1;
-  return toTexture(canvas);
-}
-
-/** A vertical neon sign strip in one glow colour, with dark brackets between signs. */
-export function neonTexture(colour) {
-  const { canvas, ctx } = makeCanvas(32, 256);
-  ctx.fillStyle = '#0c0a14';
-  ctx.fillRect(0, 0, 32, 256);
-  ctx.fillStyle = colour;
-  for (let y = 8; y < 256; y += 42) {
-    ctx.globalAlpha = 0.9;
-    ctx.fillRect(6, y, 20, 26);
-    ctx.globalAlpha = 0.25;
-    ctx.fillRect(2, y - 3, 28, 32);
+  if (neon) {
+    // a glowing sign band near the roofline
+    ctx.fillStyle = neon;
+    ctx.fillRect(0, 6, w, 5);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.fillRect(0, 8, w, 1);
   }
-  ctx.globalAlpha = 1;
-  return toTexture(canvas);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
 }
 
-/** Dark asphalt with a dashed centre line running along the texture's length. */
-export function roadTexture() {
-  const { canvas, ctx } = makeCanvas(64, 256);
-  ctx.fillStyle = '#2a2738';
-  ctx.fillRect(0, 0, 64, 256);
-  ctx.fillStyle = '#565270';
-  for (let y = 0; y < 256; y += 32) ctx.fillRect(30, y, 4, 18);
-  // Faint tyre wear on both lanes.
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.fillRect(10, 0, 8, 256);
-  ctx.fillRect(46, 0, 8, 256);
-  const texture = toTexture(canvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  return texture;
+/**
+ * The ground seen from above: asphalt base, the street grid with dashed centre
+ * lines, pale sidewalks around each block, green parks, and the sand strip
+ * along the south edge where the city meets the harbour.
+ */
+export function groundTexture(rng, parks) {
+  const size = 1024;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  const half = (CITY.blocks * CITY.pitch) / 2; // 660
+  const toPx = (v) => ((v + half + 40) / (half * 2 + 80)) * size;
+  ctx.fillStyle = PALETTE.ground;
+  ctx.fillRect(0, 0, size, size);
+  // sand along the south edge
+  ctx.fillStyle = PALETTE.beach;
+  ctx.fillRect(0, toPx(half), size, size - toPx(half));
+  // parks
+  ctx.fillStyle = '#2f5d3a';
+  for (const park of parks) {
+    ctx.fillRect(toPx(park.minX), toPx(park.minZ), toPx(park.maxX) - toPx(park.minX), toPx(park.maxZ) - toPx(park.minZ));
+  }
+  // streets: pale sidewalk border, darker road, dashed centre line.
+  // Street centrelines sit on multiples of the pitch, between the blocks.
+  const centres = [];
+  for (let k = -CITY.blocks / 2; k <= CITY.blocks / 2; k += 1) centres.push(k * CITY.pitch);
+  for (const c of centres) {
+    ctx.fillStyle = '#3d4149'; // sidewalk edge
+    ctx.fillRect(toPx(c - CITY.street / 2 - 4), 0, toPx(CITY.street + 8) - toPx(0), size);
+    ctx.fillRect(0, toPx(c - CITY.street / 2 - 4), size, toPx(CITY.street + 8) - toPx(0));
+    ctx.fillStyle = PALETTE.street;
+    ctx.fillRect(toPx(c - CITY.street / 2), 0, toPx(CITY.street) - toPx(0), size);
+    ctx.fillRect(0, toPx(c - CITY.street / 2), size, toPx(CITY.street) - toPx(0));
+    // dashed centre line
+    ctx.fillStyle = 'rgba(230,220,150,0.55)';
+    const dash = toPx(6) - toPx(0);
+    for (let v = -half - 40; v < half + 40; v += 18) {
+      ctx.fillRect(toPx(c) - 1, toPx(v), 2, dash);
+      ctx.fillRect(toPx(v), toPx(c) - 1, dash, 2);
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
 }
-
-/** A plain flat colour texture (used for the sea and the sand so they shade evenly). */
-export function flatTexture(hex) {
-  const { canvas, ctx } = makeCanvas(4, 4);
-  ctx.fillStyle = hex;
-  ctx.fillRect(0, 0, 4, 4);
-  return toTexture(canvas);
-}
-
-export { PALETTE };
