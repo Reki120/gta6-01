@@ -19,6 +19,7 @@
   #hud-crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; font-size: 22px; line-height: 22px; text-align: center; color: rgba(255,255,255,0.9); }
   #hud-toast { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); max-width: 560px; font-size: 15px; line-height: 1.45; text-align: center; color: #ffe9f4; background: rgba(20,8,20,0.72); border: 1px solid rgba(255,46,136,0.5); border-radius: 8px; padding: 10px 16px; }
   #hud-hit { position: absolute; left: 50%; top: 42%; transform: translateX(-50%); font-size: 20px; font-weight: 800; color: #ffd23e; letter-spacing: 2px; }
+  #hud-mute { position: absolute; top: 194px; right: 14px; pointer-events: auto; font-size: 18px; line-height: 1; padding: 6px 9px; color: #eef1f5; background: rgba(10,14,22,0.85); border: 2px solid rgba(255,255,255,0.35); border-radius: 8px; cursor: pointer; }
   #hud-speed { font-size: 26px; font-weight: 700; }
   #hud-health { font-size: 15px; }
   #minimap { position: absolute; top: 14px; right: 14px; width: 170px; height: 170px; border: 2px solid rgba(255,255,255,0.35); border-radius: 8px; background: rgba(10,14,22,0.85); }
@@ -41,6 +42,7 @@
   <div id="hud-stars">☆☆☆☆☆</div>
   <div id="hud-objective">Meet Mara Voss at the harbour — missions arrive soon.</div>
   <canvas id="minimap" width="170" height="170" aria-label="Minimap of Neon Bay"></canvas>
+  <button id="hud-mute" type="button" aria-label="Mute sound (M)">🔊</button>
   <div id="hud-bottom">
     <div id="hud-speed">0 km/h</div>
     <div>Health <span id="hud-health">100</span></div>
@@ -53,7 +55,7 @@
 <div id="screen-title" class="overlay">
   <h1>NEON <span class="bay">BAY</span></h1>
   <p>You are Rook, a getaway driver in debt to the fixer Mara Voss. The city is yours — on foot or behind the wheel.</p>
-  <p class="keys">WASD move &amp; drive · Shift run · Space jump · Mouse drag to look · Click to shoot · R reload · E enter / exit car · Esc pause</p>
+  <p class="keys">WASD move &amp; drive · Shift run · Space jump · Mouse drag to look · Click to shoot · R reload · E enter / exit car · M mute · Esc pause</p>
   <p id="title-best">Best cash: $250</p>
   <p class="cta">Press Enter or click to start</p>
 </div>
