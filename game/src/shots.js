@@ -4,6 +4,7 @@
 // and the same seed always gives the same frame.
 import { STEP } from './config.js';
 import { resetWorld, stepWorld } from './world.js';
+import { placePed } from './peds.js';
 
 function idleControls() {
   return { forward: false, back: false, left: false, right: false, run: false, jump: false, enter: false, lookYaw: 0, lookPitch: 0 };
@@ -51,6 +52,18 @@ export function stageShot(name, state) {
   if (name === 'foot') {
     state.camYaw = Math.PI;
     runSteps(state, 7, walkControls);
+    // two pedestrians on the sidewalk ahead, so the foot scene shows them
+    for (let k = 0; k < 2; k += 1) {
+      const ped = state.peds[k];
+      ped.axis = 'z';
+      ped.line = 0;
+      ped.dir = 1;
+      ped.side = k === 0 ? 1 : -1;
+      ped.along = state.player.z - 16 - k * 9;
+      ped.dodge = 0;
+      ped.state = 'walk';
+      placePed(ped);
+    }
     return { screen: 'play' };
   }
   if (name === 'drive') {
@@ -58,6 +71,21 @@ export function stageShot(name, state) {
     runSteps(state, 0.6, walkControls);
     stepWorld(state, STEP, { ...idleControls(), enter: true });
     runSteps(state, 9, driveControls);
+    // two traffic cars ahead in the same street, so the drive scene shows them
+    const driven = state.cars[state.activeCar];
+    const fx = Math.sin(driven.heading);
+    const fz = Math.cos(driven.heading);
+    for (let k = 0; k < 2; k += 1) {
+      const t = state.traffic[k];
+      const ahead = 24 + k * 22;
+      const side = k === 0 ? -2.6 : 2.6;
+      t.x = driven.x + fx * ahead - fz * side;
+      t.z = driven.z + fz * ahead + fx * side;
+      t.heading = driven.heading;
+      t.speed = 10;
+      t.mesh.position.set(t.x, 0, t.z);
+      t.mesh.rotation.y = t.heading;
+    }
     return { screen: 'play' };
   }
   if (name === 'chase') {
