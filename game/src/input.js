@@ -4,6 +4,8 @@
 export const ACTION_CONFIRM = 1;
 export const ACTION_PAUSE = 2;
 export const ACTION_ENTER = 4;
+export const ACTION_SHOOT = 8;
+export const ACTION_RELOAD = 16;
 
 const FORWARD = new Set(['KeyW', 'ArrowUp']);
 const BACK = new Set(['KeyS', 'ArrowDown']);
@@ -14,6 +16,7 @@ const JUMP = new Set(['Space']);
 const CONFIRM = new Set(['Enter']);
 const PAUSE = new Set(['KeyP', 'Escape']);
 const ENTER = new Set(['KeyE']);
+const RELOAD = new Set(['KeyR']);
 
 export function createInput(canvas) {
   const held = new Set();
@@ -37,6 +40,8 @@ export function createInput(canvas) {
       event.preventDefault();
     } else if (ENTER.has(event.code)) {
       actions |= ACTION_ENTER;
+    } else if (RELOAD.has(event.code)) {
+      actions |= ACTION_RELOAD;
     }
   });
   window.addEventListener('keyup', (event) => {
@@ -45,13 +50,26 @@ export function createInput(canvas) {
   window.addEventListener('blur', () => held.clear());
 
   // Drag to look: pointer lock on click is a bonus, drag is the promise.
+  // A quick click (short, barely moved) is a pistol shot, not a look.
+  let downX = 0;
+  let downY = 0;
+  let downAt = 0;
   canvas.addEventListener('pointerdown', (event) => {
     dragging = true;
     lastX = event.clientX;
     lastY = event.clientY;
+    downX = event.clientX;
+    downY = event.clientY;
+    downAt = performance.now();
     canvas.setPointerCapture(event.pointerId);
     if (document.pointerLockElement !== canvas) {
       try { canvas.requestPointerLock(); } catch { /* drag still works */ }
+    }
+  });
+  canvas.addEventListener('pointerup', (event) => {
+    if (performance.now() - downAt < 300 &&
+        Math.hypot(event.clientX - downX, event.clientY - downY) < 8) {
+      actions |= ACTION_SHOOT;
     }
   });
   canvas.addEventListener('pointermove', (event) => {
