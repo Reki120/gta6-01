@@ -14,15 +14,23 @@ function idleControls() {
 function driveControls(state) {
   const car = state.cars[state.activeCar];
   if (!car) return idleControls();
-  // streets run along x or z at multiples of the pitch; stay near x = 0 lane
-  const lane = Math.round(car.x / 132) * 132;
-  const off = car.x - lane;
-  const wantHeading = Math.PI; // north, up the street
+  // drive north up the x = 0 street, then turn east at the z = -132
+  // junction so the drive scene shows more than one street
+  const turning = car.z < -118;
+  const wantHeading = turning ? Math.PI / 2 : Math.PI; // east, then north
+  // the lane is the street centre across the direction of travel
+  const across = turning ? car.z : car.x;
+  const lane = Math.round(across / 132) * 132;
+  const off = across - lane;
   let diff = wantHeading - car.heading;
   while (diff > Math.PI) diff -= Math.PI * 2;
   while (diff < -Math.PI) diff += Math.PI * 2;
-  const steer = Math.max(-1, Math.min(1, diff * 1.4 - off * 0.02));
-  return { forward: true, back: false, left: steer > 0.15, right: steer < -0.15, run: false, jump: false, enter: false, lookYaw: 0, lookPitch: 0 };
+  // lane term: +off steers back toward the lane on both legs (northbound
+  // off is in x, eastbound it is in z — the sign works out the same way)
+  const steer = Math.max(-1, Math.min(1, diff * 1.4 + off * 0.04));
+  // coast through the turn itself: a slower turn stays inside the junction
+  const midTurn = turning && Math.abs(diff) > 0.5;
+  return { forward: !midTurn, back: false, left: steer > 0.15, right: steer < -0.15, run: false, jump: false, enter: false, lookYaw: 0, lookPitch: 0 };
 }
 
 function walkControls(state) {
