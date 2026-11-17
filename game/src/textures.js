@@ -57,7 +57,7 @@ export function groundTexture(rng, parks) {
   const ctx = canvas.getContext('2d');
   const half = (CITY.blocks * CITY.pitch) / 2; // 660
   const toPx = (v) => ((v + half + 40) / (half * 2 + 80)) * size;
-  ctx.fillStyle = PALETTE.ground;
+  ctx.fillStyle = '#4a505c'; // asphalt base, lifted so dusk shadows stay readable
   ctx.fillRect(0, 0, size, size);
   // sand along the south edge
   ctx.fillStyle = PALETTE.beach;
@@ -72,10 +72,10 @@ export function groundTexture(rng, parks) {
   const centres = [];
   for (let k = -CITY.blocks / 2; k <= CITY.blocks / 2; k += 1) centres.push(k * CITY.pitch);
   for (const c of centres) {
-    ctx.fillStyle = '#3d4149'; // sidewalk edge
+    ctx.fillStyle = '#565b66'; // sidewalk edge
     ctx.fillRect(toPx(c - CITY.street / 2 - 4), 0, toPx(CITY.street + 8) - toPx(0), size);
     ctx.fillRect(0, toPx(c - CITY.street / 2 - 4), size, toPx(CITY.street + 8) - toPx(0));
-    ctx.fillStyle = PALETTE.street;
+    ctx.fillStyle = '#626874'; // road
     ctx.fillRect(toPx(c - CITY.street / 2), 0, toPx(CITY.street) - toPx(0), size);
     ctx.fillRect(0, toPx(c - CITY.street / 2), size, toPx(CITY.street) - toPx(0));
     // dashed centre line
