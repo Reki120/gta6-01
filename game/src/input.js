@@ -1,7 +1,6 @@
-// Keyboard and pointer input. Held keys give movement and driving; one-shot presses
-// (confirm, pause, enter/exit car) are queued as bit flags and taken once by the loop,
-// so a press between two frames is never lost and never counted twice. Mouse drag
-// orbits the camera; clicking the canvas also tries pointer lock for free look.
+// Keyboard and pointer input. Held keys steer and drive; one-shot presses
+// (confirm, pause, enter/exit a car) are queued as bit flags and taken once
+// by the loop, so a press between two frames is never lost or counted twice.
 export const ACTION_CONFIRM = 1;
 export const ACTION_PAUSE = 2;
 export const ACTION_ENTER = 4;
@@ -16,85 +15,84 @@ const CONFIRM = new Set(['Enter']);
 const PAUSE = new Set(['KeyP', 'Escape']);
 const ENTER = new Set(['KeyE']);
 
-export function createInput(target) {
-  const held = { forward: false, back: false, left: false, right: false, run: false, jump: false };
+export function createInput(canvas) {
+  const held = new Set();
   let actions = 0;
-  let lookDX = 0;
-  let lookDY = 0;
+  let dragYaw = 0;
+  let dragPitch = 0;
   let dragging = false;
   let lastX = 0;
   let lastY = 0;
 
-  function setHeld(code, value) {
-    if (FORWARD.has(code)) held.forward = value;
-    else if (BACK.has(code)) held.back = value;
-    else if (LEFT.has(code)) held.left = value;
-    else if (RIGHT.has(code)) held.right = value;
-    else if (RUN.has(code)) held.run = value;
-    else if (JUMP.has(code)) held.jump = value;
-  }
-
   window.addEventListener('keydown', (event) => {
-    if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
+    if (event.repeat) return;
+    if (FORWARD.has(event.code) || BACK.has(event.code) || LEFT.has(event.code) ||
+        RIGHT.has(event.code) || RUN.has(event.code) || JUMP.has(event.code)) {
+      held.add(event.code);
+      event.preventDefault();
+    } else if (CONFIRM.has(event.code)) {
+      actions |= ACTION_CONFIRM;
     } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
+      actions |= ACTION_PAUSE;
+      event.preventDefault();
     } else if (ENTER.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_ENTER;
-    } else if (FORWARD.has(event.code) || BACK.has(event.code) || LEFT.has(event.code) || RIGHT.has(event.code) || RUN.has(event.code) || JUMP.has(event.code)) {
-      setHeld(event.code, true);
-    } else {
-      return;
+      actions |= ACTION_ENTER;
     }
-    event.preventDefault();
   });
-  window.addEventListener('keyup', (event) => setHeld(event.code, false));
-  // A key released while the tab is hidden never sends keyup: let go of everything.
-  window.addEventListener('blur', () => {
-    held.forward = held.back = held.left = held.right = held.run = held.jump = false;
-    dragging = false;
+  window.addEventListener('keyup', (event) => {
+    held.delete(event.code);
   });
+  window.addEventListener('blur', () => held.clear());
 
-  target.addEventListener('pointerdown', (event) => {
+  // Drag to look: pointer lock on click is a bonus, drag is the promise.
+  canvas.addEventListener('pointerdown', (event) => {
     dragging = true;
     lastX = event.clientX;
     lastY = event.clientY;
-    if (document.pointerLockElement !== target) {
-      try { target.requestPointerLock(); } catch { /* drag-look still works */ }
+    canvas.setPointerCapture(event.pointerId);
+    if (document.pointerLockElement !== canvas) {
+      try { canvas.requestPointerLock(); } catch { /* drag still works */ }
     }
   });
-  window.addEventListener('pointerup', () => { dragging = false; });
-  window.addEventListener('pointermove', (event) => {
-    if (document.pointerLockElement === target) {
-      lookDX += event.movementX;
-      lookDY += event.movementY;
-    } else if (dragging) {
-      lookDX += event.clientX - lastX;
-      lookDY += event.clientY - lastY;
-      lastX = event.clientX;
-      lastY = event.clientY;
+  canvas.addEventListener('pointermove', (event) => {
+    if (document.pointerLockElement === canvas) {
+      dragYaw -= event.movementX * 0.0032;
+      dragPitch -= event.movementY * 0.0028;
+      return;
     }
+    if (!dragging) return;
+    dragYaw -= (event.clientX - lastX) * 0.005;
+    dragPitch -= (event.clientY - lastY) * 0.004;
+    lastX = event.clientX;
+    lastY = event.clientY;
   });
-  // Clicking the canvas on a menu screen confirms (start / restart).
-  target.addEventListener('click', () => { actions |= ACTION_CONFIRM; });
+  const endDrag = () => { dragging = false; };
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
 
   return {
-    /** The held keys, as an object the world steps with. */
-    keys() {
-      return { ...held, enter: false };
+    forward() { return [...FORWARD].some((c) => held.has(c)); },
+    back() { return [...BACK].some((c) => held.has(c)); },
+    left() { return [...LEFT].some((c) => held.has(c)); },
+    right() { return [...RIGHT].some((c) => held.has(c)); },
+    run() { return [...RUN].some((c) => held.has(c)); },
+    jump() { return [...JUMP].some((c) => held.has(c)); },
+    /** Camera orbit delta since the last call, in radians. */
+    takeLook() {
+      const look = { yaw: dragYaw, pitch: dragPitch };
+      dragYaw = 0;
+      dragPitch = 0;
+      return look;
     },
-    /** One-shot presses since the last call, as ACTION_* flags. */
     takeActions() {
       const taken = actions;
       actions = 0;
       return taken;
     },
-    /** Mouse-look deltas since the last call, in pixels. */
-    takeLook() {
-      const look = { dx: lookDX, dy: lookDY };
-      lookDX = 0;
-      lookDY = 0;
-      return look;
+    /** Test and autopilot helper: pretend a key is held. */
+    setHeld(code, on) {
+      if (on) held.add(code);
+      else held.delete(code);
     },
   };
 }
