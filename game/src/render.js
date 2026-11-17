@@ -9,13 +9,13 @@ export function createView(canvas) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = 1.3;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(PALETTE.sky);
   scene.fog = new THREE.Fog(PALETTE.fog, 120, 900);
 
-  const hemi = new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 1.35);
+  const hemi = new THREE.HemisphereLight(PALETTE.hemiSky, PALETTE.hemiGround, 1.7);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(PALETTE.sun, 2.6);
   sun.position.set(-260, 190, -320);
@@ -28,8 +28,9 @@ export function createView(canvas) {
   sun.shadow.camera.far = 1200;
   sun.shadow.bias = -0.0004;
   scene.add(sun);
-  // a cool fill from the harbour side so shadows are never pitch black
-  const fill = new THREE.DirectionalLight(0x5a6fd8, 0.55);
+  // a cool fill from the harbour side so shadows are never pitch black —
+  // strong enough that the road right in front of the camera stays readable
+  const fill = new THREE.DirectionalLight(0x5a6fd8, 1.1);
   fill.position.set(200, 120, 300);
   scene.add(fill);
 
