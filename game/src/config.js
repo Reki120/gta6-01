@@ -1,55 +1,59 @@
-// NEON BAY — every tuning number and colour in one place.
-// A fictional coastal city at dusk. All sizes are in metres.
+// Neon Bay — every tuning number the world, the cars and the camera share.
+// One place to tune the feel: walk and drive speeds, the city grid, the dusk palette.
 export const STEP = 1 / 60;
 
+export const SAVE_KEY = 'NEONBAY_SAVE_V1';
+
 export const CITY = {
-  blocks: 10,          // blocks per side
-  blockSize: 120,      // metres of buildings per block
-  streetWidth: 12,     // metres of road between blocks
-  downtownRadius: 2,   // blocks around the centre that grow towers
+  blocks: 10, // blocks across, and down
+  block: 120, // metres of built land per block
+  street: 12, // metres of road between blocks
+  pitch: 132, // block + street, centre to centre
 };
 
-/** Distance between two neighbouring block centres (block + street). */
-export const PITCH = CITY.blockSize + CITY.streetWidth;
-
 export const PLAYER = {
-  walkSpeed: 6,
-  runSpeed: 11,
-  jumpSpeed: 8.5,
-  gravity: 24,
+  walk: 6,
+  run: 10.5,
+  jump: 8.5,
+  gravity: 26,
   radius: 0.55,
   height: 1.8,
 };
 
 export const CAR = {
-  accel: 16,
-  brake: 30,
-  reverseAccel: 10,
-  maxSpeed: 42,        // m/s, about 150 km/h
-  maxReverse: 10,
-  steerMax: 0.55,      // radians at standstill
-  drag: 0.35,
-  enterDistance: 4,
+  accel: 17,
+  brake: 32,
+  reverseAccel: 11,
+  maxSpeed: 38, // about 137 km/h
+  maxReverse: 9,
+  steer: 0.62, // radians of wheel angle at full lock, scaled by speed
+  grip: 5.5, // how fast sideways slide is killed off (the drift feel)
+  enterDistance: 4.5,
+};
+
+export const CAMERA = {
+  distance: 8.5,
+  height: 3.4,
+  driveDistance: 11,
+  driveHeight: 4.2,
+  lag: 6, // how fast the chase camera catches up, per second
 };
 
 export const PALETTE = {
-  sky: 0x3d2a6b,
-  fog: 0x54407a,
-  ground: 0x3a3550,
-  road: 0x2a2738,
-  sidewalk: 0x35324a,
-  sand: 0xc2a878,
-  sea: 0x14425e,
-  park: 0x1e4d2a,
-  neonPink: 0xff2e88,
-  neonCyan: 0x2ee6ff,
-  neonAmber: 0xffb02e,
+  sky: 0x2b3357,
+  fog: 0x2a2f4a,
+  sun: 0xffb36b,
+  hemiSky: 0x8a7bd8,
+  hemiGround: 0x2e2620,
+  ground: '#3a3f47',
+  street: '#484d57',
+  beach: '#c9a86a',
+  neonPink: '#ff2e88',
+  neonCyan: '#22e6ff',
+  neonAmber: '#ffb02e',
 };
 
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+export const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
-/** Where the save lives between visits (this browser only). */
-export const SAVE_KEY = 'NEONBAY_SAVE_V1';
-
-export const OBJECTIVE_START = 'Find a ride. Press E near a parked car to get in.';
-export const OBJECTIVE_DRIVE = 'Cruise Neon Bay. E to get out, Shift to run on foot.';
+export const START_CASH = 250;
+export const OBJECTIVE = 'Meet Mara Voss at the harbour — missions arrive soon.';
