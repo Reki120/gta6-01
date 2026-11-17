@@ -1,128 +1,159 @@
-// The procedural city layout: a 10x10 block grid with towers downtown, low houses at
-// the edges, parks, a harbour and a beach on the south edge, and parked cars. This file
-// only computes data — the renderer turns it into meshes. All coordinates are metres,
-// x east, z south, the city centred on (0, 0).
-import { CITY, PITCH } from './config.js';
+// The procedural city of Neon Bay: a 10x10 block grid, downtown towers in the
+// middle, low houses toward the edges, parks, a beach and harbour water on the
+// south edge, and emissive streetlights. Builds the meshes once and hands back
+// the collision boxes the walker and the cars push against.
+import { CITY, PALETTE } from './config.js';
+import { facadeTexture, groundTexture } from './textures.js';
 import { pick, range } from './random.js';
 
-const EDGE_COLOURS = ['#8a6f5c', '#7d8a99', '#a08a6a', '#6f7d6a', '#96707a'];
-const MID_COLOURS = ['#5c6b8a', '#7a6a8a', '#4a5a6e', '#8a7a5c', '#6e7d8a'];
-const TOWER_COLOURS = ['#3a3f5e', '#4a3a5e', '#2e4a5e', '#5e3a4a', '#3a5e4a'];
+const CLADDING = ['#3a3f4d', '#4d3a44', '#37424e', '#4a4038', '#2f3a4a', '#51384a'];
+const NEON = [PALETTE.neonPink, PALETTE.neonCyan, PALETTE.neonAmber, null, null];
 
-export const CAR_COLOURS = [0xd83a3a, 0x2e9be6, 0xf2c94c, 0x37c978];
-
-/** Centre of block (i, j), with i, j in 0..blocks-1. */
-export function blockCentre(i, j) {
-  const half = (CITY.blocks - 1) / 2;
-  return { x: (i - half) * PITCH, z: (j - half) * PITCH };
+function blockCentre(i) {
+  return (i - (CITY.blocks - 1) / 2) * CITY.pitch;
 }
 
-/** The full width of the built-up city, in metres. */
-export function cityHalfSize() {
-  return (CITY.blocks * PITCH - CITY.streetWidth) / 2;
-}
-
-export function generateCity(random) {
-  const buildings = [];
+/** Build the city into `scene`. Returns colliders, parks and the world bounds. */
+export function buildCity(scene, rng) {
   const colliders = [];
   const parks = [];
-  const lights = [];
-  const carSpawns = [];
+  const group = new THREE.Group();
+  group.name = 'city';
 
-  for (let i = 0; i < CITY.blocks; i += 1) {
-    for (let j = 0; j < CITY.blocks; j += 1) {
-      const centre = blockCentre(i, j);
-      const dist = Math.max(Math.abs(i - 4.5), Math.abs(j - 4.5));
-      const downtown = dist <= CITY.downtownRadius;
-      const mid = !downtown && dist <= 3.5;
+  // --- parks: three blocks kept green, with a few box trees
+  const parkBlocks = [[1, 7], [7, 2], [8, 8]];
+  const treeMat = new THREE.MeshLambertMaterial({ color: 0x2e6b34 });
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5a4128 });
+  for (const [bi, bj] of parkBlocks) {
+    const cx = blockCentre(bi);
+    const cz = blockCentre(bj);
+    const half = CITY.block / 2 - 6;
+    parks.push({ minX: cx - half, maxX: cx + half, minZ: cz - half, maxZ: cz + half });
+    for (let t = 0; t < 7; t += 1) {
+      const tx = cx + range(rng, -half + 8, half - 8);
+      const tz = cz + range(rng, -half + 8, half - 8);
+      const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.5, 2.2, 0.5), trunkMat);
+      trunk.position.set(tx, 1.1, tz);
+      const top = new THREE.Mesh(new THREE.BoxGeometry(range(rng, 2.4, 4), range(rng, 2.4, 4), range(rng, 2.4, 4)), treeMat);
+      top.position.set(tx, 3.4, tz);
+      top.castShadow = true;
+      group.add(trunk, top);
+    }
+  }
+  const isPark = (bi, bj) => parkBlocks.some(([a, b]) => a === bi && b === bj);
 
-      // A couple of blocks are parks instead of buildings.
-      if ((i === 2 && j === 7) || (i === 7 && j === 2) || (i === 6 && j === 6)) {
-        parks.push({ x: centre.x, z: centre.z, size: CITY.blockSize - 16 });
-        continue;
-      }
+  // --- ground: one big textured plane covering city + beach
+  const span = CITY.blocks * CITY.pitch + 80;
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(span, span + 260),
+    new THREE.MeshLambertMaterial({ map: groundTexture(rng, parks) }),
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(0, 0, 110); // shifted south so the beach strip shows
+  ground.receiveShadow = true;
+  group.add(ground);
 
-      const count = downtown ? 1 : mid ? 2 : 3 + Math.floor(random() * 2);
-      for (let b = 0; b < count; b += 1) {
-        const slot = count === 1 ? 0 : b;
-        const cols = count === 1 ? 1 : 2;
-        const rows = Math.ceil(count / 2);
-        const w = (CITY.blockSize - 24) / cols;
-        const d = (CITY.blockSize - 24) / rows;
-        const x = centre.x - (CITY.blockSize - 24) / 2 + (slot % cols) * w + w / 2;
-        const z = centre.z - (CITY.blockSize - 24) / 2 + Math.floor(slot / cols) * d + d / 2;
-        const height = downtown
-          ? range(random, 45, 115)
-          : mid ? range(random, 16, 42) : range(random, 6, 15);
-        const bw = w * range(random, 0.72, 0.92);
-        const bd = d * range(random, 0.72, 0.92);
-        const colour = downtown ? pick(random, TOWER_COLOURS) : mid ? pick(random, MID_COLOURS) : pick(random, EDGE_COLOURS);
-        const building = { x, z, w: bw, d: bd, h: height, colour, downtown };
-        buildings.push(building);
-        colliders.push({ minX: x - bw / 2, maxX: x + bw / 2, minZ: z - bd / 2, maxZ: z + bd / 2 });
+  // --- harbour water: a dark, slightly glossy plane past the beach
+  const water = new THREE.Mesh(
+    new THREE.PlaneGeometry(span + 400, 420),
+    new THREE.MeshLambertMaterial({ color: 0x14324a, transparent: true, opacity: 0.92 }),
+  );
+  water.rotation.x = -Math.PI / 2;
+  water.position.set(0, 0.4, CITY.blocks * CITY.pitch / 2 + 40 + 210 + 110);
+  group.add(water);
+
+  // --- buildings, block by block
+  const roofMat = new THREE.MeshLambertMaterial({ color: 0x1c2027 });
+  for (let bi = 0; bi < CITY.blocks; bi += 1) {
+    for (let bj = 0; bj < CITY.blocks; bj += 1) {
+      if (isPark(bi, bj)) continue;
+      const cx = blockCentre(bi);
+      const cz = blockCentre(bj);
+      const downtown = Math.abs(bi - 4.5) <= 2 && Math.abs(bj - 4.5) <= 2;
+      const edge = bi === 0 || bj === 0 || bi === CITY.blocks - 1 || bj === CITY.blocks - 1;
+      const count = downtown ? 1 : edge ? 2 : Math.floor(rng() * 3) + 1;
+      for (let n = 0; n < count; n += 1) {
+        const w = downtown ? range(rng, 34, 52) : range(rng, 18, 40);
+        const d = downtown ? range(rng, 34, 52) : range(rng, 18, 40);
+        const h = downtown
+          ? range(rng, 55, 150)
+          : edge ? range(rng, 7, 16) : range(rng, 12, 42);
+        const ox = count === 1 ? 0 : range(rng, -28, 28);
+        const oz = count === 1 ? 0 : range(rng, -28, 28);
+        const x = cx + ox;
+        const z = cz + oz;
+        const floors = Math.max(2, Math.round(h / 7));
+        const cols = Math.max(3, Math.round(w / 9));
+        const tex = facadeTexture(rng, pick(rng, CLADDING), floors, cols, downtown ? pick(rng, NEON) : null);
+        const mat = new THREE.MeshLambertMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.5 });
+        const tower = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+        tower.position.set(x, h / 2, z);
+        tower.castShadow = true;
+        tower.receiveShadow = true;
+        group.add(tower);
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(w * 0.55, 1.6, d * 0.55), roofMat);
+        roof.position.set(x, h + 0.8, z);
+        group.add(roof);
+        colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
       }
     }
   }
 
-  // Streetlights at the corners of every other street crossing.
-  for (let i = 0; i <= CITY.blocks; i += 1) {
-    for (let j = 0; j <= CITY.blocks; j += 1) {
-      if ((i + j) % 2 !== 0) continue;
-      const x = (i - CITY.blocks / 2) * PITCH + 8;
-      const z = (j - CITY.blocks / 2) * PITCH + 8;
-      lights.push({ x, z });
+  // --- streetlights: a pole and a warm glowing head on every other corner
+  const poleMat = new THREE.MeshLambertMaterial({ color: 0x22242a });
+  const lampMat = new THREE.MeshBasicMaterial({ color: 0xffd9a0 });
+  const lampGeo = new THREE.BoxGeometry(0.5, 0.3, 1.6);
+  const poleGeo = new THREE.CylinderGeometry(0.12, 0.16, 7, 6);
+  for (let k = -CITY.blocks / 2; k <= CITY.blocks / 2; k += 1) {
+    for (let m = -CITY.blocks / 2; m <= CITY.blocks / 2; m += 1) {
+      if ((k + m) % 2 !== 0) continue;
+      const x = k * CITY.pitch + CITY.street / 2 + 1.5;
+      const z = m * CITY.pitch + CITY.street / 2 + 1.5;
+      if (Math.abs(x) > CITY.blocks * CITY.pitch / 2 + 6 || Math.abs(z) > CITY.blocks * CITY.pitch / 2 + 6) continue;
+      const pole = new THREE.Mesh(poleGeo, poleMat);
+      pole.position.set(x, 3.5, z);
+      const lamp = new THREE.Mesh(lampGeo, lampMat);
+      lamp.position.set(x, 7, z);
+      group.add(pole, lamp);
     }
   }
 
-  // Parked cars on the streets near the spawn, each facing along its street.
-  carSpawns.push({ x: 8, z: 0, angle: Math.PI / 2, colour: CAR_COLOURS[0] });
-  carSpawns.push({ x: 132, z: -40, angle: 0, colour: CAR_COLOURS[1] });
-  carSpawns.push({ x: -132, z: 50, angle: Math.PI, colour: CAR_COLOURS[2] });
-  carSpawns.push({ x: 40, z: -132, angle: -Math.PI / 2, colour: CAR_COLOURS[3] });
-
-  const half = cityHalfSize();
+  scene.add(group);
   return {
-    buildings,
     colliders,
     parks,
-    lights,
-    carSpawns,
-    half,
-    // South edge: sand strip then open water.
-    beachZ: half + 30,
-    seaZ: half + 90,
-    spawn: { x: 0, z: 12, heading: Math.PI },
+    bounds: CITY.blocks * CITY.pitch / 2 + 30, // beach is walkable to here
+    waterZ: CITY.blocks * CITY.pitch / 2 + 40,
   };
 }
 
-/** Push a circle (x, z, radius) out of every building it overlaps. Returns true on a hit. */
-export function resolveCollisions(colliders, pos, radius) {
-  let hit = false;
-  for (let i = 0; i < colliders.length; i += 1) {
-    const c = colliders[i];
-    const nearestX = Math.max(c.minX, Math.min(pos.x, c.maxX));
-    const nearestZ = Math.max(c.minZ, Math.min(pos.z, c.maxZ));
-    const dx = pos.x - nearestX;
-    const dz = pos.z - nearestZ;
-    const distSq = dx * dx + dz * dz;
-    if (distSq >= radius * radius) continue;
-    hit = true;
-    if (distSq > 0.000001) {
-      const dist = Math.sqrt(distSq);
-      pos.x = nearestX + (dx / dist) * radius;
-      pos.z = nearestZ + (dz / dist) * radius;
+/** Push a circle (x, z, radius) out of every building box it overlaps. */
+export function resolveCollisions(x, z, radius, colliders) {
+  let px = x;
+  let pz = z;
+  for (const b of colliders) {
+    const cx = Math.max(b.minX, Math.min(px, b.maxX));
+    const cz = Math.max(b.minZ, Math.min(pz, b.maxZ));
+    const dx = px - cx;
+    const dz = pz - cz;
+    const d2 = dx * dx + dz * dz;
+    if (d2 >= radius * radius) continue;
+    if (d2 > 0.0001) {
+      const d = Math.sqrt(d2);
+      px = cx + (dx / d) * radius;
+      pz = cz + (dz / d) * radius;
     } else {
-      // Centre inside the box: push out along the smallest penetration.
-      const pushLeft = pos.x - c.minX;
-      const pushRight = c.maxX - pos.x;
-      const pushUp = pos.z - c.minZ;
-      const pushDown = c.maxZ - pos.z;
-      const min = Math.min(pushLeft, pushRight, pushUp, pushDown);
-      if (min === pushLeft) pos.x = c.minX - radius;
-      else if (min === pushRight) pos.x = c.maxX + radius;
-      else if (min === pushUp) pos.z = c.minZ - radius;
-      else pos.z = c.maxZ + radius;
+      // dead centre inside a box: shove out along the nearer face
+      const pushLeft = px - b.minX;
+      const pushRight = b.maxX - px;
+      const pushBack = pz - b.minZ;
+      const pushFront = b.maxZ - pz;
+      const m = Math.min(pushLeft, pushRight, pushBack, pushFront);
+      if (m === pushLeft) px = b.minX - radius;
+      else if (m === pushRight) px = b.maxX + radius;
+      else if (m === pushBack) pz = b.minZ - radius;
+      else pz = b.maxZ + radius;
     }
   }
-  return hit;
+  return { x: px, z: pz };
 }
