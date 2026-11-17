@@ -4,9 +4,9 @@
 // window.__shotReady for a screenshot.
 import { STEP } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, loadSave, resetWorld, saveGame, stepWorld, EVENT_OVER } from './world.js';
+import { createWorld, loadSave, resetWorld, saveGame, stepWorld, EVENT_OVER, EVENT_BUSTED } from './world.js';
 import { createView } from './render.js';
-import { createInput, ACTION_CONFIRM, ACTION_PAUSE, ACTION_ENTER } from './input.js';
+import { createInput, ACTION_CONFIRM, ACTION_PAUSE, ACTION_ENTER, ACTION_SHOOT, ACTION_RELOAD } from './input.js';
 import { createHud } from './hud.js';
 import { stageShot } from './shots.js';
 
@@ -66,13 +66,63 @@ function runGame() {
     },
     inCar() { return state.activeCar >= 0; },
     health() { return state.health; },
+    wanted() { return state.wanted; },
+    ammo() { return state.combat.ammo; },
+    cash() { return state.cash; },
+    mission() {
+      return {
+        active: state.mission.active,
+        next: state.mission.next,
+        objective: state.objective,
+        completed: [...state.missionsCompleted],
+      };
+    },
+    counts() {
+      return {
+        traffic: state.traffic.length,
+        trafficMoving: state.traffic.filter((c) => Math.abs(c.speed) > 0.5).length,
+        peds: state.peds.length,
+        pedsDown: state.peds.filter((p) => p.state === 'down').length,
+        police: state.policeUnits.filter((u) => u.active).length,
+      };
+    },
+    teleport(x, z) {
+      if (state.activeCar >= 0) {
+        const car = state.cars[state.activeCar];
+        car.x = x; car.z = z;
+        car.mesh.position.set(x, 0, z);
+      } else {
+        state.player.x = x; state.player.z = z;
+        state.player.mesh.position.set(x, state.player.y, z);
+      }
+    },
+    aimAt(x, z) {
+      state.camYaw = Math.atan2(x - state.player.x, z - state.player.z);
+    },
+    setWanted(n) { state.wanted = n; },
   };
 
   function startGame() {
     resetWorld(state);
     screen = 'play';
     hud.show(null);
+    input.takeActions(); // swallow the click that started the game (no stray shot)
     announce('Playing. Drive to the harbour and meet Mara Voss.');
+  }
+
+  function resumeBusted() {
+    screen = 'play';
+    hud.show(null);
+    input.takeActions();
+    announce('Back on the street. Mara Voss is waiting.');
+  }
+
+  function endBusted() {
+    screen = 'busted';
+    hud.setBusted(state);
+    hud.show('busted');
+    saveGame(state);
+    announce(`Busted. The cops took $${state.bustedLost}.`);
   }
 
   function endGame() {
@@ -101,7 +151,10 @@ function runGame() {
   function handleActions(controls) {
     const actions = input.takeActions();
     if (actions & ACTION_ENTER) controls.enter = true;
+    if (actions & ACTION_SHOOT) controls.shoot = true;
+    if (actions & ACTION_RELOAD) controls.reload = true;
     if (actions & ACTION_CONFIRM && (screen === 'title' || screen === 'over')) startGame();
+    else if (actions & ACTION_CONFIRM && screen === 'busted') resumeBusted();
     else if (actions & ACTION_PAUSE && screen === 'play') {
       screen = 'paused';
       hud.show('pause');
@@ -124,9 +177,15 @@ function runGame() {
       while (accumulator >= STEP) {
         const events = stepWorld(state, STEP, controls);
         controls.enter = false;
+        controls.shoot = false;
+        controls.reload = false;
         accumulator -= STEP;
         if (events & EVENT_OVER) {
           endGame();
+          break;
+        }
+        if (events & EVENT_BUSTED) {
+          endBusted();
           break;
         }
       }
@@ -143,6 +202,7 @@ function runGame() {
 
   canvas.addEventListener('pointerdown', () => {
     if (screen === 'title' || screen === 'over') startGame();
+    else if (screen === 'busted') resumeBusted();
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
