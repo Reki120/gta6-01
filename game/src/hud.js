@@ -2,6 +2,7 @@
 // 2D minimap, and the title / pause / game-over screens. The 3D view never
 // touches the DOM; this module owns all of it.
 import { CITY } from './config.js';
+import { missionTarget } from './missions.js';
 
 function starRow(wanted) {
   let out = '';
@@ -16,15 +17,22 @@ export function createHud() {
   const health = el('hud-health');
   const stars = el('hud-stars');
   const objective = el('hud-objective');
+  const ammo = el('hud-ammo-count');
+  const ammoBox = el('hud-ammo');
+  const crosshair = el('hud-crosshair');
+  const hit = el('hud-hit');
+  const toast = el('hud-toast');
   const minimap = el('minimap');
   const ctx = minimap.getContext('2d');
   const overlays = {
     title: el('screen-title'),
     pause: el('screen-pause'),
     over: el('screen-over'),
+    busted: el('screen-busted'),
   };
   const bestLine = el('title-best');
   const overLine = el('over-stats');
+  const bustedLine = el('busted-stats');
 
   function show(name) {
     for (const key of Object.keys(overlays)) {
@@ -55,11 +63,38 @@ export function createHud() {
     for (const car of state.cars) {
       ctx.fillRect(toPx(car.x) - 2, toPx(car.z) - 2, 4, 4);
     }
-    // patrol car
-    if (state.police.active) {
+    // traffic cars
+    ctx.fillStyle = '#9aa3b5';
+    for (const car of state.traffic || []) {
+      ctx.fillRect(toPx(car.x) - 1.5, toPx(car.z) - 1.5, 3, 3);
+    }
+    // pedestrians
+    ctx.fillStyle = '#7ddf9a';
+    for (const ped of state.peds || []) {
+      ctx.fillRect(toPx(ped.x) - 1, toPx(ped.z) - 1, 2, 2);
+    }
+    // mission marker: pink diamond
+    if (state.mission) {
+      const target = missionTarget(state);
+      if (target) {
+        const tx = toPx(target.x);
+        const tz = toPx(target.z);
+        ctx.fillStyle = '#ff2e88';
+        ctx.beginPath();
+        ctx.moveTo(tx, tz - 6);
+        ctx.lineTo(tx + 5, tz);
+        ctx.lineTo(tx, tz + 6);
+        ctx.lineTo(tx - 5, tz);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    // patrol cars
+    for (const unit of state.policeUnits || []) {
+      if (!unit.active) continue;
       ctx.fillStyle = '#ff4444';
       ctx.beginPath();
-      ctx.arc(toPx(state.police.x), toPx(state.police.z), 4, 0, Math.PI * 2);
+      ctx.arc(toPx(unit.x), toPx(unit.z), 4, 0, Math.PI * 2);
       ctx.fill();
     }
     // Rook: a white arrow pointing where he faces
@@ -87,6 +122,9 @@ export function createHud() {
     setOver(state) {
       overLine.textContent = `Cash $${state.cash.toLocaleString('en-US')} · Best $${state.bestCash.toLocaleString('en-US')}`;
     },
+    setBusted(state) {
+      bustedLine.textContent = `The cops took $${state.bustedLost.toLocaleString('en-US')} of your cash. Cash now $${state.cash.toLocaleString('en-US')}.`;
+    },
     update(state) {
       cash.textContent = `$${state.cash.toLocaleString('en-US')}`;
       const car = state.activeCar >= 0 ? state.cars[state.activeCar] : null;
@@ -97,6 +135,22 @@ export function createHud() {
       stars.textContent = starRow(state.wanted);
       stars.style.color = state.wanted > 0 ? '#ffb02e' : '#8b93a3';
       objective.textContent = state.objective;
+      // pistol: crosshair + ammo only on foot; HIT flash on a hit
+      const onFoot = state.activeCar < 0;
+      crosshair.classList.toggle('hidden', !onFoot);
+      ammoBox.classList.toggle('hidden', !onFoot);
+      ammo.textContent = state.combat.reloadTimer > 0
+        ? 'Reloading…'
+        : `${state.combat.ammo} / 12`;
+      hit.classList.toggle('hidden', !(state.combat.hitFlash > 0));
+      // mission banner (intro / complete / fail / busted)
+      const banner = state.mission ? state.mission.banner : null;
+      if (banner) {
+        toast.textContent = banner.text;
+        toast.classList.remove('hidden');
+      } else {
+        toast.classList.add('hidden');
+      }
       drawMinimap(state);
     },
   };
