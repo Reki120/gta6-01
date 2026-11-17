@@ -1,19 +1,15 @@
-// NEON BAY — boot and the one loop: input is read every frame, the world advances
-// in fixed 1/60 s steps (several in a slow frame, none in a fast one), and the
-// renderer paints what is there. The game moves between four screens: title, play,
-// paused and game over. Save data lives in localStorage under NEONBAY_SAVE_V1.
-//
-// ?seed=N fixes the city. ?shot=start|drive|foot|chase (with &seed=N) stages that
-// scene instead of running the loop, paints it twice and sets window.__shotReady.
-import { SAVE_KEY, STEP } from './config.js';
+// Neon Bay boot: read the save, build the world, run the fixed-step loop and
+// the four screens (title, play, paused, game over). ?shot=start|drive|foot|
+// chase (with &seed=N) stages that scene instead, paints it twice and sets
+// window.__shotReady for a screenshot.
+import { STEP } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_ENTER, EVENT_EXIT } from './world.js';
-import { ACTION_CONFIRM, ACTION_ENTER, ACTION_PAUSE, createInput } from './input.js';
+import { createWorld, loadSave, resetWorld, saveGame, stepWorld, EVENT_OVER } from './world.js';
+import { createView } from './render.js';
+import { createInput, ACTION_CONFIRM, ACTION_PAUSE, ACTION_ENTER } from './input.js';
 import { createHud } from './hud.js';
-import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
 import { stageShot } from './shots.js';
 
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped. */
 const MAX_FRAME = 0.25;
 
 const params = new URLSearchParams(window.location.search);
@@ -23,79 +19,28 @@ const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() 
 
 const canvas = document.getElementById('game');
 const status = document.getElementById('status');
-const random = createRandom(seed);
-const world = createWorld(random);
-const renderer = createRenderer(canvas, random);
-const hud = createHud({
-  cashEl: document.getElementById('hud-cash'),
-  speedEl: document.getElementById('hud-speed'),
-  healthEl: document.getElementById('hud-health'),
-  healthBarEl: document.getElementById('hud-health-bar'),
-  starsEl: document.getElementById('hud-stars'),
-  objectiveEl: document.getElementById('hud-objective'),
-  promptEl: document.getElementById('hud-prompt'),
-  minimap: document.getElementById('minimap'),
-});
+const view = createView(canvas);
+const hud = createHud();
+const save = loadSave();
+const state = createWorld(view.scene, createRandom(seed), save);
+const input = createInput(canvas);
 
-const screens = {
-  [SCREEN_TITLE]: document.getElementById('screen-title'),
-  [SCREEN_PAUSED]: document.getElementById('screen-paused'),
-  [SCREEN_OVER]: document.getElementById('screen-over'),
-};
-const hudEl = document.getElementById('hud');
-
-function readSave() {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(SAVE_KEY) ?? 'null');
-    if (parsed && typeof parsed === 'object') {
-      return {
-        cash: Number(parsed.cash) || 0,
-        bestCash: Number(parsed.bestCash) || 0,
-        missionsCompleted: Array.isArray(parsed.missionsCompleted) ? parsed.missionsCompleted : [],
-      };
-    }
-  } catch {
-    // Storage can be off (private windows): the save then lasts this visit only.
-  }
-  return { cash: 250, bestCash: 250, missionsCompleted: [] };
-}
-
-function writeSave(save) {
-  try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  } catch {
-    // See readSave: storage off means the save lasts this visit only.
-  }
-}
-
-const save = readSave();
-world.state.cash = save.cash;
-world.state.bestCash = save.bestCash;
-
-function persist() {
-  save.cash = world.state.cash;
-  save.bestCash = Math.max(save.bestCash, world.state.cash);
-  world.state.bestCash = save.bestCash;
-  writeSave(save);
-}
-
-function showScreen(name) {
-  for (const key of Object.keys(screens)) {
-    if (screens[key]) screens[key].classList.toggle('hidden', key !== name);
-  }
-  if (hudEl) hudEl.classList.toggle('hidden', name !== SCREEN_PLAY);
+function announce(message) {
+  status.textContent = message;
 }
 
 function runShot(name) {
-  const scene = stageShot(name, world);
-  renderer.snapCamera(world.state);
-  renderer.buildActors(world.state);
-  showScreen(scene.screen);
-  hud.showTitle(save.bestCash);
-  hud.update(world.state, world.speedKmh());
+  const scene = stageShot(name, state);
+  hud.setBest(state.bestCash);
+  if (scene.screen === 'title') hud.show('title');
+  else hud.show(null);
+  hud.update(state);
+  // Snap the smoothed chase camera onto the staged subject first: with only
+  // two paints, its lag would otherwise leave it hundreds of metres behind.
+  view.draw(state, 1);
   let painted = 0;
   function paint() {
-    renderer.draw(world.state, scene.screen, STEP);
+    view.draw(state, STEP);
     painted += 1;
     if (painted < 2) requestAnimationFrame(paint);
     else window.__shotReady = true;
@@ -104,119 +49,118 @@ function runShot(name) {
 }
 
 function runGame() {
-  const input = createInput(canvas);
-  let screen = SCREEN_TITLE;
+  let screen = 'title';
   let accumulator = 0;
   let last = performance.now();
 
-  // Screen readers (and anyone watching the page's text) hear the screen changes.
-  function announce(message) {
-    status.textContent = message;
-  }
+  // A harmless hook for automated smoke tests: position, speed, car, health.
+  window.__game = {
+    state,
+    screen: () => screen,
+    player() {
+      return { x: state.player.x, z: state.player.z, y: state.player.y, heading: state.player.heading };
+    },
+    speedKmh() {
+      const car = state.activeCar >= 0 ? state.cars[state.activeCar] : null;
+      return car ? Math.abs(car.speed) * 3.6 : Math.abs(state.player.speed) * 3.6;
+    },
+    inCar() { return state.activeCar >= 0; },
+    health() { return state.health; },
+  };
 
   function startGame() {
-    world.reset();
-    world.state.cash = save.cash;
-    world.state.bestCash = save.bestCash;
-    renderer.buildActors(world.state);
-    renderer.snapCamera(world.state);
-    accumulator = 0;
-    screen = SCREEN_PLAY;
-    showScreen(screen);
-    announce('Playing Neon Bay. Find a ride.');
+    resetWorld(state);
+    screen = 'play';
+    hud.show(null);
+    announce('Playing. Drive to the harbour and meet Mara Voss.');
   }
 
   function endGame() {
-    persist();
-    screen = SCREEN_OVER;
-    showScreen(screen);
-    hud.showGameOver(world.state.cash, save.bestCash);
-    announce(`Game over. Cash $${world.state.cash}. Best $${save.bestCash}.`);
+    screen = 'over';
+    hud.setOver(state);
+    hud.show('over');
+    saveGame(state);
+    announce(`Game over. Cash $${state.cash}. Best $${state.bestCash}.`);
   }
 
-  function setScreen(next) {
-    screen = next;
-    showScreen(screen);
+  function readControls() {
+    const look = input.takeLook();
+    return {
+      forward: input.forward(),
+      back: input.back(),
+      left: input.left(),
+      right: input.right(),
+      run: input.run(),
+      jump: input.jump(),
+      enter: false,
+      lookYaw: look.yaw,
+      lookPitch: look.pitch,
+    };
   }
 
-  function handleActions() {
+  function handleActions(controls) {
     const actions = input.takeActions();
-    if (actions & ACTION_CONFIRM && (screen === SCREEN_TITLE || screen === SCREEN_OVER)) startGame();
-    else if (actions & ACTION_PAUSE && screen === SCREEN_PLAY) {
-      setScreen(SCREEN_PAUSED);
+    if (actions & ACTION_ENTER) controls.enter = true;
+    if (actions & ACTION_CONFIRM && (screen === 'title' || screen === 'over')) startGame();
+    else if (actions & ACTION_PAUSE && screen === 'play') {
+      screen = 'paused';
+      hud.show('pause');
       announce('Paused.');
-    } else if (actions & (ACTION_PAUSE | ACTION_CONFIRM) && screen === SCREEN_PAUSED) {
-      setScreen(SCREEN_PLAY);
+    } else if (actions & (ACTION_PAUSE | ACTION_CONFIRM) && screen === 'paused') {
+      screen = 'play';
+      hud.show(null);
       announce('Playing.');
     }
-    return actions;
-  }
-
-  function applyLook() {
-    const look = input.takeLook();
-    if (look.dx === 0 && look.dy === 0) return;
-    world.state.camera.yaw -= look.dx * 0.004;
-    world.state.camera.pitch = Math.max(0.05, Math.min(1.1, world.state.camera.pitch + look.dy * 0.003));
   }
 
   function frame(now) {
     requestAnimationFrame(frame);
-    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
+    const frameDt = Math.min((now - last) / 1000, MAX_FRAME);
+    accumulator += frameDt;
     last = now;
-    const actions = handleActions();
-    applyLook();
-    if (screen === SCREEN_PLAY) {
-      let enterPending = Boolean(actions & ACTION_ENTER);
+    const controls = readControls();
+    handleActions(controls);
+    if (screen === 'play') {
       while (accumulator >= STEP) {
-        const keys = input.keys();
-        keys.enter = enterPending;
-        enterPending = false; // one press, one enter/exit — never both in one frame
-        const events = world.step(STEP, keys);
-        if (events & EVENT_ENTER) { persist(); announce('You are driving. W A S D to drive, E to get out when stopped.'); }
-        if (events & EVENT_EXIT) { persist(); announce('On foot. Find another car with E.'); }
-        if (world.state.health <= 0) {
+        const events = stepWorld(state, STEP, controls);
+        controls.enter = false;
+        accumulator -= STEP;
+        if (events & EVENT_OVER) {
           endGame();
           break;
         }
-        accumulator -= STEP;
       }
-      if (screen === SCREEN_PLAY) {
-        hud.update(world.state, world.speedKmh());
-        renderer.draw(world.state, screen, STEP);
-      }
-    } else if (screen === SCREEN_TITLE) {
-      // The city idles behind the title screen.
-      while (accumulator >= STEP) {
-        world.step(STEP, { forward: false, back: false, left: false, right: false, run: false, jump: false, enter: false });
-        accumulator -= STEP;
-      }
-      renderer.draw(world.state, screen, STEP);
     } else {
       accumulator = 0;
-      renderer.draw(world.state, screen, STEP);
+      if (screen === 'title') {
+        // the city idles behind the title: slow orbit, Rook on the street
+        state.camYaw += frameDt * 0.03;
+      }
     }
+    hud.update(state);
+    view.draw(state, frameDt || STEP);
   }
 
-  // Leaving the tab pauses a running game and saves, rather than losing progress.
+  canvas.addEventListener('pointerdown', () => {
+    if (screen === 'title' || screen === 'over') startGame();
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      persist();
-      if (screen === SCREEN_PLAY) {
-        setScreen(SCREEN_PAUSED);
+      saveGame(state);
+      if (screen === 'play') {
+        screen = 'paused';
+        hud.show('pause');
         announce('Paused.');
       }
     }
   });
-  window.addEventListener('beforeunload', persist);
+  window.addEventListener('beforeunload', () => saveGame(state));
 
-  hud.showTitle(save.bestCash);
-  showScreen(SCREEN_TITLE);
-  announce('Neon Bay. Press Enter or click to start.');
+  hud.setBest(state.bestCash);
+  hud.show('title');
+  announce('Neon Bay. Press Enter or click to start. WASD to move, E to enter a car.');
   requestAnimationFrame(frame);
 }
-
-// A harmless hook for play-testing: the live state, read-only from the console.
-window.__game = { world, get state() { return world.state; }, save };
 
 if (shot) runShot(shot);
 else runGame();
