@@ -1,104 +1,103 @@
-// The DOM HUD: cash, speed, health, wanted stars, the objective line, the "press E"
-// prompt, and a 2D canvas minimap (streets, parks, the sea, the player arrow and the
-// parked cars). Text is rebuilt only when its value changes.
-import { FONT } from './config.js';
+// The DOM overlay: cash, speed, health, wanted stars, the objective line, the
+// 2D minimap, and the title / pause / game-over screens. The 3D view never
+// touches the DOM; this module owns all of it.
+import { CITY } from './config.js';
 
-export function createHud(elements) {
-  const { cashEl, speedEl, healthEl, healthBarEl, starsEl, objectiveEl, promptEl, minimap } = elements;
-  const mapCtx = minimap.getContext('2d');
-  const MAP_SIZE = 168;
-  minimap.width = MAP_SIZE;
-  minimap.height = MAP_SIZE;
+function starRow(wanted) {
+  let out = '';
+  for (let i = 0; i < 5; i += 1) out += i < wanted ? '★' : '☆';
+  return out;
+}
 
-  let lastCash = -1;
-  let lastSpeed = -1;
-  let lastHealth = -1;
-  let lastWanted = -1;
-  let lastObjective = '';
-  let lastPrompt = '';
+export function createHud() {
+  const el = (id) => document.getElementById(id);
+  const cash = el('hud-cash');
+  const speed = el('hud-speed');
+  const health = el('hud-health');
+  const stars = el('hud-stars');
+  const objective = el('hud-objective');
+  const minimap = el('minimap');
+  const ctx = minimap.getContext('2d');
+  const overlays = {
+    title: el('screen-title'),
+    pause: el('screen-pause'),
+    over: el('screen-over'),
+  };
+  const bestLine = el('title-best');
+  const overLine = el('over-stats');
 
-  function setText(el, value, last) {
-    if (value !== last) el.textContent = value;
-    return value;
+  function show(name) {
+    for (const key of Object.keys(overlays)) {
+      overlays[key].classList.toggle('hidden', key !== name);
+    }
   }
 
-  function update(state, speedKmh) {
-    lastCash = setText(cashEl, `$${state.cash}`, lastCash);
-    const speed = Math.round(speedKmh);
-    lastSpeed = setText(speedEl, state.mode === 'car' ? `${speed} km/h` : '', lastSpeed);
-    lastHealth = setText(healthEl, `${state.health}`, lastHealth);
-    if (healthBarEl) healthBarEl.style.width = `${state.health}%`;
-    const stars = '★'.repeat(state.wanted) + '☆'.repeat(Math.max(0, 5 - state.wanted));
-    lastWanted = setText(starsEl, stars, lastWanted);
-    lastObjective = setText(objectiveEl, state.objective, lastObjective);
-    const prompt = state.mode === 'foot' && state.nearCar ? 'Press E to get in' : state.mode === 'car' ? 'Press E to get out (when stopped)' : '';
-    lastPrompt = setText(promptEl, prompt, lastPrompt);
-    drawMinimap(state);
-  }
-
+  /** Draw the top-down map: streets, parks, cars, the patrol car, Rook. */
   function drawMinimap(state) {
-    const city = state.city;
-    const half = city.half + 70;
-    const scale = MAP_SIZE / (half * 2);
-    const toMap = (x, z) => [(x + half) * scale, (z + half) * scale];
-
-    mapCtx.fillStyle = '#14121e';
-    mapCtx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
-    // The sea along the bottom (south) edge.
-    mapCtx.fillStyle = '#14425e';
-    const [, seaY] = toMap(0, city.beachZ);
-    mapCtx.fillRect(0, seaY, MAP_SIZE, MAP_SIZE - seaY);
-    // Parks.
-    mapCtx.fillStyle = '#1e4d2a';
-    for (const park of city.parks) {
-      const [x, y] = toMap(park.x - park.size / 2, park.z - park.size / 2);
-      mapCtx.fillRect(x, y, park.size * scale, park.size * scale);
+    const size = minimap.width;
+    const span = CITY.blocks * CITY.pitch + 80;
+    const toPx = (v) => ((v + span / 2) / span) * size;
+    ctx.fillStyle = 'rgba(10,14,22,0.85)';
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = '#2f5d3a';
+    for (const park of state.city.parks) {
+      ctx.fillRect(toPx(park.minX), toPx(park.minZ), toPx(park.maxX) - toPx(park.minX), toPx(park.maxZ) - toPx(park.minZ));
     }
-    // Streets.
-    mapCtx.fillStyle = '#3d3a52';
-    for (let i = 0; i <= 10; i += 1) {
-      const offset = (i - 5) * 132;
-      const [x] = toMap(offset - 6, 0);
-      mapCtx.fillRect(x, 0, 12 * scale, MAP_SIZE);
-      const [, y] = toMap(0, offset - 6);
-      mapCtx.fillRect(0, y, MAP_SIZE, 12 * scale);
+    ctx.strokeStyle = '#565d6b';
+    ctx.lineWidth = 2;
+    for (let k = -CITY.blocks / 2; k <= CITY.blocks / 2; k += 1) {
+      const c = toPx(k * CITY.pitch);
+      ctx.beginPath(); ctx.moveTo(c, 0); ctx.lineTo(c, size); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, c); ctx.lineTo(size, c); ctx.stroke();
     }
-    // Parked cars (not the one being driven).
-    for (let i = 0; i < state.cars.length; i += 1) {
-      if (i === state.carIndex) continue;
-      const car = state.cars[i];
-      const [x, y] = toMap(car.x, car.z);
-      mapCtx.fillStyle = '#f2c94c';
-      mapCtx.beginPath();
-      mapCtx.arc(x, y, 3, 0, Math.PI * 2);
-      mapCtx.fill();
+    // parked cars
+    ctx.fillStyle = '#ffd23e';
+    for (const car of state.cars) {
+      ctx.fillRect(toPx(car.x) - 2, toPx(car.z) - 2, 4, 4);
     }
-    // The player arrow, pointing along the heading.
-    const [px, py] = toMap(state.player.x, state.player.z);
-    mapCtx.save();
-    mapCtx.translate(px, py);
-    mapCtx.rotate(state.player.heading);
-    mapCtx.fillStyle = '#2ee6ff';
-    mapCtx.beginPath();
-    mapCtx.moveTo(0, -7);
-    mapCtx.lineTo(5, 6);
-    mapCtx.lineTo(0, 3);
-    mapCtx.lineTo(-5, 6);
-    mapCtx.closePath();
-    mapCtx.fill();
-    mapCtx.restore();
+    // patrol car
+    if (state.police.active) {
+      ctx.fillStyle = '#ff4444';
+      ctx.beginPath();
+      ctx.arc(toPx(state.police.x), toPx(state.police.z), 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Rook: a white arrow pointing where he faces
+    const p = state.player;
+    const px = toPx(p.x);
+    const pz = toPx(p.z);
+    ctx.save();
+    ctx.translate(px, pz);
+    ctx.rotate(Math.PI - p.heading);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, -7);
+    ctx.lineTo(5, 6);
+    ctx.lineTo(-5, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
-  /** Fill the title screen's best-cash line and the game-over summary. */
-  function showTitle(bestCash) {
-    const el = document.getElementById('title-best');
-    if (el) el.textContent = bestCash > 0 ? `Best cash: $${bestCash}` : '';
-  }
-
-  function showGameOver(cash, bestCash) {
-    const el = document.getElementById('over-stats');
-    if (el) el.textContent = `Cash $${cash} · Best $${bestCash}`;
-  }
-
-  return { update, showTitle, showGameOver, FONT };
+  return {
+    show,
+    setBest(best) {
+      bestLine.textContent = `Best cash: $${best.toLocaleString('en-US')}`;
+    },
+    setOver(state) {
+      overLine.textContent = `Cash $${state.cash.toLocaleString('en-US')} · Best $${state.bestCash.toLocaleString('en-US')}`;
+    },
+    update(state) {
+      cash.textContent = `$${state.cash.toLocaleString('en-US')}`;
+      const car = state.activeCar >= 0 ? state.cars[state.activeCar] : null;
+      const kmh = car ? Math.abs(car.speed) * 3.6 : Math.abs(state.player.speed) * 3.6;
+      speed.textContent = `${Math.round(kmh)} km/h`;
+      health.textContent = `${Math.round(state.health)}`;
+      health.style.color = state.health < 35 ? '#ff5a5a' : '#eef1f5';
+      stars.textContent = starRow(state.wanted);
+      stars.style.color = state.wanted > 0 ? '#ffb02e' : '#8b93a3';
+      objective.textContent = state.objective;
+      drawMinimap(state);
+    },
+  };
 }
